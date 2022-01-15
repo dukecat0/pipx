@@ -6,7 +6,7 @@ import nox  # type: ignore
 
 PYTHON_ALL_VERSIONS = ["3.6", "3.7", "3.8", "3.9", "3.10"]
 PYTHON_DEFAULT_VERSION = "3.10"
-DOC_DEPENDENCIES = [".", "jinja2", "mkdocs", "mkdocs-material"]
+DOC_DEPENDENCIES = [".", "jinja2", "mkdocs", "mkdocs-material", "mdx_gh_links"]
 MAN_DEPENDENCIES = [".", "argparse-manpage"]
 LINT_DEPENDENCIES = [
     "black==21.12b0",
