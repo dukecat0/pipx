@@ -114,7 +114,7 @@ def tests_with_options(session, net_pypiserver):
         refresh_packages_cache(session)
         pypiserver_option = []
 
-    session.run("pytest", "--reruns 5", *pypiserver_option, "--cov=pipx", "--cov-report=", *tests)
+    session.run("pytest", *pypiserver_option, "--cov=pipx", "--cov-report=", *tests, "--reruns 5")
     session.notify("cover")
 
 
