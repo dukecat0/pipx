@@ -115,7 +115,7 @@ def test_run_ensure_null_pythonpath():
                 "-m",
                 "pipx",
                 "run",
-                "ipython",
+                "ipython!=8.1.0",
                 "-c",
                 "import os; print(os.environ.get('PYTHONPATH'))",
             ],
