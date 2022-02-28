@@ -122,6 +122,7 @@ def tests_with_options(session, net_pypiserver):
         *tests,
         "--reruns",
         "3",
+        "-v",
     )
     session.notify("cover")
 
