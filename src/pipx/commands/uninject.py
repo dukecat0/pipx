@@ -29,7 +29,7 @@ def get_include_app_paths(
 
         if path_without_file_ext.stem in venv.package_metadata[package_name].apps:
             need_to_remove.add(bin_dir_app_path)
-
+    print(need_to_remove)
     return need_to_remove
 
 
