@@ -22,6 +22,7 @@ def get_include_app_paths(
     bin_dir_app_paths = _get_package_bin_dir_app_paths(
         venv, venv.package_metadata[package_name], local_bin_dir
     )
+    print(venv.package_metadata[package_name].apps)
 
     not_in_arg = set()
     for bin_dir_app_path in bin_dir_app_paths:
