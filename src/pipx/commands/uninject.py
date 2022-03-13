@@ -27,7 +27,10 @@ def get_include_app_paths(
     for bin_dir_app_path in bin_dir_app_paths:
         path_without_file_ext = bin_dir_app_path.with_suffix("")
 
-        if path_without_file_ext.stem not in venv.package_metadata[package_name].apps:
+        if (
+            path_without_file_ext.stem not in venv.package_metadata[package_name].apps
+            and path_without_file_ext.stem != package_name
+        ):
             not_in_arg.add(bin_dir_app_path)
 
     new_app_paths = bin_dir_app_paths - not_in_arg
