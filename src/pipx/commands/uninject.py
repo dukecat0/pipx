@@ -25,10 +25,10 @@ def get_include_app_paths(
 
     need_to_remove = set()
     for bin_dir_app_path in bin_dir_app_paths:
-        path_without_file_ext = bin_dir_app_path.with_suffix("")
 
-        if path_without_file_ext.stem in venv.package_metadata[package_name].apps:
+        if bin_dir_app_path.stem in venv.package_metadata[package_name].apps:
             need_to_remove.add(bin_dir_app_path)
+
     print(need_to_remove)
     return need_to_remove
 
