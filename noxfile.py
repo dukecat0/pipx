@@ -9,23 +9,17 @@ PYTHON_DEFAULT_VERSION = "3.10"
 DOC_DEPENDENCIES = [".", "jinja2", "mkdocs", "mkdocs-material", "mdx_gh_links"]
 MAN_DEPENDENCIES = [".", "argparse-manpage"]
 LINT_DEPENDENCIES = [
-    "black==22.1.0",
+    "black==22.3.0",
     "flake8==4.0.1",
     "flake8-bugbear==21.11.29",
     "mypy==0.930",
     "types-jinja2",
-    "check-manifest==0.47",
     "packaging>=20.0",
     "isort==5.10.1",
 ]
 # Packages whose dependencies need an intact system PATH to compile
 # pytest setup clears PATH.  So pre-build some wheels to the pip cache.
-PREBUILD_PACKAGES = {
-    "all": ["jupyter==1.0.0"],
-    "macos": ["black==20.8b1"],
-    "unix": [],
-    "win": [],
-}
+PREBUILD_PACKAGES = {"all": ["jupyter==1.0.0"], "macos": [], "unix": [], "win": []}
 PIPX_TESTS_CACHE_DIR = Path("./.pipx_tests/package_cache")
 PIPX_TESTS_PACKAGE_LIST_DIR = Path("testdata/tests_packages")
 
@@ -173,8 +167,6 @@ def lint(session):
         "--warn-unused-ignores",
         *files,
     )
-    session.run("check-manifest")
-    session.run("python", "setup.py", "check", "--metadata", "--strict")
 
 
 @nox.session(python=PYTHON_ALL_VERSIONS)
