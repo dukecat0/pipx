@@ -197,11 +197,24 @@ class Venv:
 
     def upgrade_packaging_libraries(self, pip_args: List[str]) -> None:
         if self.uses_shared_libs:
-            shared_libs.upgrade(verbose=self.verbose)
+            shared_libs.upgrade(pip_args=pip_args, verbose=self.verbose)
         else:
             # TODO: setuptools and wheel? Original code didn't bother
             # but shared libs code does.
             self._upgrade_package_no_metadata("pip", pip_args)
+
+    def uninstall_package(self, package: str, was_injected: bool = False):
+        try:
+            with animate(f"uninstalling {package}", self.do_animation):
+                cmd = ["uninstall", "-y"] + [package]
+                self._run_pip(cmd)
+        except PipxError as e:
+            logging.info(e)
+            raise PipxError(f"Error uninstalling {package}.")
+
+        if was_injected:
+            self.pipx_metadata.injected_packages.pop(package)
+            self.pipx_metadata.write()
 
     def install_package(
         self,
@@ -260,6 +273,28 @@ class Venv:
                 f"be installed with pip.",
                 wrap_message=False,
             )
+
+    def install_unmanaged_packages(
+        self, requirements: List[str], pip_args: List[str]
+    ) -> None:
+        """Install packages in the venv, but do not record them in the metadata."""
+
+        # Note: We want to install everything at once, as that lets
+        # pip resolve conflicts correctly.
+        with animate(f"installing {', '.join(requirements)}", self.do_animation):
+            # do not use -q with `pip install` so subprocess_post_check_pip_errors
+            #   has more information to analyze in case of failure.
+            cmd = (
+                [str(self.python_path), "-m", "pip", "install"]
+                + pip_args
+                + requirements
+            )
+            # no logging because any errors will be specially logged by
+            #   subprocess_post_check_handle_pip_error()
+            pip_process = run_subprocess(cmd, log_stdout=False, log_stderr=False)
+        subprocess_post_check_handle_pip_error(pip_process)
+        if pip_process.returncode:
+            raise PipxError(f"Error installing {', '.join(requirements)}.")
 
     def install_package_no_deps(self, package_or_url: str, pip_args: List[str]) -> str:
         with animate(
@@ -341,12 +376,13 @@ class Venv:
     def get_python_version(self) -> str:
         return run_subprocess([str(self.python_path), "--version"]).stdout.strip()
 
-    def list_installed_packages(self) -> Set[str]:
+    def list_installed_packages(self, not_required=False) -> Set[str]:
         cmd_run = run_subprocess(
             [str(self.python_path), "-m", "pip", "list", "--format=json"]
+            + (["--not-required"] if not_required else [])
         )
         pip_list = json.loads(cmd_run.stdout.strip())
-        return set([x["name"] for x in pip_list])
+        return {x["name"] for x in pip_list}
 
     def _find_entry_point(self, app: str) -> Optional[EntryPoint]:
         if not self.python_path.exists():
