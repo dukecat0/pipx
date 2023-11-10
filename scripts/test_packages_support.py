@@ -1,4 +1,3 @@
-import platform
 import sys
 from pathlib import Path
 
@@ -6,7 +5,7 @@ PYTHON_VERSION_STR = f"{sys.version_info[0]}.{sys.version_info[1]}"
 
 # Platform logic
 if sys.platform == "darwin":
-    FULL_PLATFORM = "macos" + platform.release().split(".")[0]
+    FULL_PLATFORM = "macos"
 elif sys.platform == "win32":
     FULL_PLATFORM = "win"
 else:
