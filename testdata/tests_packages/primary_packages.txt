@@ -30,4 +30,5 @@ tox
 tox-ini-fmt==0.5.0
 weblate==4.3.1          True    # expected fail in tests
 wheel
-pyobjc[allbindings] ; sys_platform=='darwin'
+requests==2.31.0 # Testing the support for PEP 723
+pyobjc[allbindings] ; sys_platform=='darwin' # Avoid creating lists for multiple macOS versions
