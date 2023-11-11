@@ -62,7 +62,6 @@ def parse_package_list(package_list_file: Path) -> List[Dict[str, Any]]:
                 if not re.search(r"\S", line_parsed):
                     continue
                 line_list = line_parsed.strip().split()
-                print(line_list)
                 if len(line_list) == 1:
                     output_list.append({"spec": line_list[0]})
                 elif len(line_list) == 2:
@@ -73,7 +72,7 @@ def parse_package_list(package_list_file: Path) -> List[Dict[str, Any]]:
                         }
                     )
                 elif len(line_list) == 3:
-                    output_list.append({"spec": line_list})
+                    output_list.append({"spec": line_parsed})
                 else:
                     print(
                         f"ERROR: Unable to parse primary package list line:\n    {line.strip()}"
