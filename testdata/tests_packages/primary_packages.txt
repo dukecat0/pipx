@@ -30,4 +30,4 @@ tox
 tox-ini-fmt==0.5.0
 weblate==4.3.1          True    # expected fail in tests
 wheel
-pyobjc[allbindings] ; sys_platform =='darwin'
+pyobjc[allbindings];sys_platform =='darwin'
