@@ -309,6 +309,8 @@ def run_pipx_command(args: argparse.Namespace) -> ExitCode:  # noqa: C901
         return ExitCode(0)
     elif args.command == "environment":
         return commands.environment(value=args.value)
+    elif args.command == "freeze":
+        return commands.freeze(venv_container, args.output_path, args.skip)
     else:
         raise PipxError(f"Unknown command {args.command}")
 
@@ -704,6 +706,23 @@ def _add_environment(subparsers: argparse._SubParsersAction, shared_parser: argp
     p.add_argument("--value", "-V", metavar="VARIABLE", help="Print the value of the variable.")
 
 
+def _add_freeze(subparsers: argparse._SubParsersAction, shared_parser: argparse.ArgumentParser) -> None:
+    p = subparsers.add_parser(
+        "freeze",
+        formatter_class=LineWrapRawTextHelpFormatter,
+        help=(
+            "Output basic inforamtion of pipx-managed packages in json format."
+            "To see a more verbose output, use `pipx list --json`."
+        ),
+        description="",
+        parents=[shared_parser],
+    )
+    p.add_argument("--output-path", "-o", metavar="PATH", help="Output the json content to specified location"),
+    p.add_argument(
+        "--skip", metavar="packages", nargs="+", default=[], help="Ignore specified packages"
+   )
+
+
 def get_command_parser() -> argparse.ArgumentParser:
     venv_container = VenvContainer(constants.PIPX_LOCAL_VENVS)
 
@@ -748,6 +767,7 @@ def get_command_parser() -> argparse.ArgumentParser:
     _add_runpip(subparsers, completer_venvs.use, shared_parser)
     _add_ensurepath(subparsers, shared_parser)
     _add_environment(subparsers, shared_parser)
+    _add_freeze(subparsers, shared_parser)
 
     parser.add_argument("--version", action="store_true", help="Print version and exit")
     subparsers.add_parser(
