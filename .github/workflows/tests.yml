@@ -147,7 +147,7 @@ jobs:
       
       - name: Build
         run: |
-          pipx install nox
+          pipx install nox hatch
           nox --error-on-missing-interpreters --non-interactive --session build
 
       - name: Configure cross compiling
