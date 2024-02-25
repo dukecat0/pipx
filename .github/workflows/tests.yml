@@ -146,7 +146,9 @@ jobs:
           tool: cross
       
       - name: Build
-        run: nox --error-on-missing-interpreters --non-interactive --session build
+        run: |
+          pipx install nox
+          nox --error-on-missing-interpreters --non-interactive --session build
 
       - name: Configure cross compiling
         if: matrix.job.cross
