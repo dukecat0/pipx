@@ -86,7 +86,7 @@ jobs:
 
   binaries:
     name: Build binaries
-    runs-on: ${{ matrix.job.target }} (${{ matrix.job.os }})
+    runs-on: ${{ matrix.job.os }}
     needs:
       - tests
     strategy:
