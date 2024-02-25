@@ -84,6 +84,117 @@ jobs:
           path: pipx.pyz
           retention-days: 3
 
+  binaries:
+    name: Build binaries
+    runs-on: ${{ matrix.job.target }} (${{ matrix.job.os }})
+    needs:
+      - tests
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+        # Linux
+        - target: aarch64-unknown-linux-gnu
+          os: ubuntu-22.04
+          cross: true
+        - target: x86_64-unknown-linux-gnu
+          os: ubuntu-22.04
+          cross: true
+        - target: x86_64-unknown-linux-musl
+          os: ubuntu-22.04
+          cross: true
+        # Windows
+        - target: x86_64-pc-windows-msvc
+          os: windows-2022
+        # macOS
+        - target: aarch64-apple-darwin
+          os: macos-12
+        - target: x86_64-apple-darwin
+          os: macos-12
+
+    env:
+      CARGO: cargo
+      CARGO_BUILD_TARGET: ${{ matrix.job.target }}
+      PYAPP_REPO: pyapp
+      PYAPP_VERSION: "0.14.0"
+      PYAPP_PIP_EXTERNAL: "true"
+      PYAPP_PASS_LOCATION: "true"
+
+    steps:
+      - name: Checkout ${{ github.ref }}
+        uses: actions/checkout@v4
+
+      - name: Fetch PyApp
+        run: >-
+          mkdir $PYAPP_REPO && curl -L
+          https://github.com/ofek/pyapp/releases/download/v$PYAPP_VERSION/source.tar.gz
+          |
+          tar --strip-components=1 -xzf - -C $PYAPP_REPO
+      
+      - name: Set up Python ${{ env.default-python }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.default-python }}
+      
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.job.target }}
+
+      - name: Set up cross compiling
+        if: matrix.job.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+      
+      - name: Build
+        run: nox --error-on-missing-interpreters --non-interactive --session build
+
+      - name: Configure cross compiling
+        if: matrix.job.cross
+        run: echo "CARGO=cross" >> $GITHUB_ENV
+
+      - name: Configure target
+        run: |-
+          config_file="$PYAPP_REPO/.cargo/config_${{ matrix.job.target }}.toml"
+          if [[ -f "$config_file" ]]; then
+            mv "$config_file" "$PYAPP_REPO/.cargo/config.toml"
+          fi
+      
+      - name: Configure embedded project
+        if: ${{ !startsWith(github.event.ref, 'refs/tags') }}
+        run: |-
+          cd dist
+          wheel="$(echo *.whl)"
+          mv "$wheel" "../$PYAPP_REPO"
+          echo "PYAPP_PROJECT_PATH=$wheel" >> $GITHUB_ENV
+
+
+      - name: Build binary
+        run: hatch build --target app
+
+      - name: Archive binary
+        run: |-
+          mkdir packaging
+          cd dist/app
+
+          binary="$(ls)"
+
+          if [[ "$binary" =~ -pc-windows- ]]; then
+            7z a "../../packaging/${binary:0:-4}.zip" "$binary"
+          else
+            chmod +x "$binary"
+            tar -czf "../../packaging/$binary.tar.gz" "$binary"
+          fi
+      
+      - name: Upload archive
+        uses: actions/upload-artifact@v3
+        with:
+          name: staged-${{ runner.os }}
+          path: packaging/*
+          if-no-files-found: error
+          retention-days: 3
+
   pypi-publish:
     name: Publish pipx to PyPI on release
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
@@ -104,7 +215,7 @@ jobs:
           cache: "pip"
       - name: Install nox
         run: pip install nox
-      - name: Build  sdist and wheel
+      - name: Build sdist and wheel
         run: nox --error-on-missing-interpreters --non-interactive --session build
       - name: Publish to PyPi
         uses: pypa/gh-action-pypi-publish@v1.8.11
