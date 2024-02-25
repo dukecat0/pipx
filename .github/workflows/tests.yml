@@ -87,8 +87,6 @@ jobs:
   binaries:
     name: Build binaries
     runs-on: ${{ matrix.job.os }}
-    needs:
-      - tests
     strategy:
       fail-fast: false
       matrix:
