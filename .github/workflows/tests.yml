@@ -107,7 +107,7 @@ jobs:
       - name: Build  sdist and wheel
         run: nox --error-on-missing-interpreters --non-interactive --session build
       - name: Publish to PyPi
-        uses: pypa/gh-action-pypi-publish@v1.8.11
+        uses: pypa/gh-action-pypi-publish@v1.8.14
 
   upload-zipapp:
     name: Upload zipapp to GitHub Release on release
@@ -119,7 +119,7 @@ jobs:
         with:
           name: pipx.pyz
       - name: Upload to release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: pipx.pyz
 
