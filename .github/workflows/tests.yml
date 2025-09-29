@@ -46,7 +46,7 @@ jobs:
       - name: Install nox
         run: python -m pip install nox
       - name: Execute Tests
-        run: nox --error-on-missing-interpreters --non-interactive --session tests-${{ matrix.python-version }} --group=${{ matrix.group }}
+        run: nox --error-on-missing-interpreters --non-interactive --session tests-${{ matrix.python-version }} -- --group=${{ matrix.group }}
   man:
     name: Build man page
     runs-on: ubuntu-latest
