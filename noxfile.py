@@ -17,7 +17,7 @@ DOC_DEPENDENCIES = [
     "markdown-gfm-admonition",
 ]
 MAN_DEPENDENCIES = ["argparse-manpage[setuptools]"]
-TEST_DEPENDENCIES = ["pytest", "pypiserver[passlib]", 'setuptools; python_version>="3.12"', "pytest-cov"]
+TEST_DEPENDENCIES = ["pytest", "pypiserver[passlib]", 'setuptools; python_version>="3.12"', "pytest-cov", "pytest-split"]
 # Packages whose dependencies need an intact system PATH to compile
 # pytest setup clears PATH.  So pre-build some wheels to the pip cache.
 PREBUILD_PACKAGES = {"all": ["jupyter==1.0.0"], "macos": [], "unix": [], "win": []}
@@ -52,6 +52,15 @@ def on_main_no_changes(session: nox.Session) -> None:
 
 
 def tests_with_options(session: nox.Session, *, net_pypiserver: bool) -> None:
+    group = None
+    split_test = []
+    for arg in session.posargs:
+        if arg.startswith("--group="):
+            group = arg.split("=", 1)[1]
+            break
+    if group is not None:
+        split_test.append("--splits=5")
+        split_test.append(f"--group={group}")
     prebuild_wheels(session, PREBUILD_PACKAGES)
     session.install("-e", ".", *TEST_DEPENDENCIES)
     test_dir = session.posargs or ["tests"]
@@ -60,7 +69,7 @@ def tests_with_options(session: nox.Session, *, net_pypiserver: bool) -> None:
     else:
         refresh_packages_cache(session)
         pypiserver_option = []
-    session.run("pytest", *pypiserver_option, "--cov=pipx", "--cov-report=", *test_dir)
+    session.run("pytest", *split_test, *pypiserver_option, "--cov=pipx", "--cov-report=", *test_dir)
     session.notify("cover")
 
 
