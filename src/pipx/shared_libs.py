@@ -135,7 +135,8 @@ class _SharedLibs:
                         *_pip_args,
                         "--upgrade",
                         "pip >= 23.1",
-                    ]
+                    ],
+                    stream_output=verbose,
                 )
             subprocess_post_check(upgrade_process)
 

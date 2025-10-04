@@ -165,6 +165,7 @@ def run_subprocess(
     log_stdout: bool = True,
     log_stderr: bool = True,
     run_dir: Optional[str] = None,
+    stream_output: bool = False,
 ) -> "subprocess.CompletedProcess[str]":
     """Run arbitrary command as subprocess, capturing stderr and stout"""
     env = dict(os.environ)
@@ -180,21 +181,36 @@ def run_subprocess(
 
     # TODO: Switch to using `-P` / PYTHONSAFEPATH instead of running in
     # separate directory in Python 3.11
-    completed_process = subprocess.run(
-        cmd_str_list,
-        env=env,
-        stdout=subprocess.PIPE if capture_stdout else None,
-        stderr=subprocess.PIPE if capture_stderr else None,
-        encoding="utf-8",
-        text=True,
-        check=False,
-        cwd=run_dir,
-    )
+    if stream_output:
+        # When streaming output, don't capture stdout/stderr
+        # This allows real-time progress bars and verbose output
+        completed_process = subprocess.run(
+            cmd_str_list,
+            env=env,
+            stdout=None,
+            stderr=None,
+            encoding="utf-8",
+            text=True,
+            check=False,
+            cwd=run_dir,
+        )
+    else:
+        completed_process = subprocess.run(
+            cmd_str_list,
+            env=env,
+            stdout=subprocess.PIPE if capture_stdout else None,
+            stderr=subprocess.PIPE if capture_stderr else None,
+            encoding="utf-8",
+            text=True,
+            check=False,
+            cwd=run_dir,
+        )
 
-    if capture_stdout and log_stdout:
-        logger.debug(f"stdout: {completed_process.stdout}".rstrip())
-    if capture_stderr and log_stderr:
-        logger.debug(f"stderr: {completed_process.stderr}".rstrip())
+        if capture_stdout and log_stdout:
+            logger.debug(f"stdout: {completed_process.stdout}".rstrip())
+        if capture_stderr and log_stderr:
+            logger.debug(f"stderr: {completed_process.stderr}".rstrip())
+    
     logger.debug(f"returncode: {completed_process.returncode}")
 
     return completed_process
@@ -330,6 +346,12 @@ def subprocess_post_check_handle_pip_error(
 ) -> None:
     if completed_process.returncode:
         logger.info(f"{' '.join(completed_process.args)!r} failed")
+        
+        # If output was streamed (not captured), we can't analyze it. Users should check their terminal output.
+        if completed_process.stdout is None and completed_process.stderr is None:
+            logger.error("Fatal error from pip prevented installation.")
+            return
+        
         # Save STDOUT and STDERR to file in pipx/logs/
         if paths.ctx.log_file is None:
             raise PipxError("Pipx internal error: No log_file present.")
@@ -346,7 +368,10 @@ def subprocess_post_check_handle_pip_error(
 
         logger.error(f"Fatal error from pip prevented installation. Full pip output in file:\n    {pip_error_file}")
 
-        analyze_pip_output(completed_process.stdout, completed_process.stderr)
+        analyze_pip_output(
+            completed_process.stdout or "", 
+            completed_process.stderr or ""
+        )
 
 
 def exec_app(
