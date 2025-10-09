@@ -27,6 +27,7 @@ from pipx.package_specifier import (
     parse_specifier_for_metadata,
 )
 from pipx.pipx_metadata_file import PackageInfo, PipxMetadata
+from pipx.progress import InstallProgress
 from pipx.shared_libs import shared_libs
 from pipx.util import (
     PipxError,
@@ -37,6 +38,7 @@ from pipx.util import (
     pipx_wrap,
     rmdir,
     run_subprocess,
+    run_subprocess_streaming,
     subprocess_post_check,
     subprocess_post_check_handle_pip_error,
 )
@@ -245,21 +247,46 @@ class Venv:
         (package_or_url, pip_args) = parse_specifier_for_install(package_or_url, pip_args)
 
         logger.info("Installing %s", package_descr := full_package_description(package_name, package_or_url))
-        with animate(f"installing {package_descr}", self.do_animation):
-            # do not use -q with `pip install` so subprocess_post_check_pip_errors
-            #   has more information to analyze in case of failure.
+        
+        # Use progress tracking if not in verbose mode and animation is enabled
+        if self.do_animation:
+            import sys
+            sys.stderr.write(f"Installing {package_descr}...\n")
+            sys.stderr.flush()
+            
+            progress = InstallProgress(package_name)
+            
             cmd = [
                 str(self.python_path),
                 "-m",
                 "pip",
                 "--no-input",
                 "install",
+                "--progress-bar", "on",  # Force progress bar to be shown
                 *pip_args,
                 package_or_url,
             ]
-            # no logging because any errors will be specially logged by
-            #   subprocess_post_check_handle_pip_error()
-            pip_process = run_subprocess(cmd, log_stdout=False, log_stderr=False, run_dir=str(self.root))
+            
+            pip_process = run_subprocess_streaming(
+                cmd,
+                run_dir=str(self.root),
+                output_callback=progress.parse_line,
+            )
+            progress.finish()
+        else:
+            # Verbose mode - use traditional approach with full output
+            with animate(f"installing {package_descr}", self.do_animation):
+                cmd = [
+                    str(self.python_path),
+                    "-m",
+                    "pip",
+                    "--no-input",
+                    "install",
+                    *pip_args,
+                    package_or_url,
+                ]
+                pip_process = run_subprocess(cmd, log_stdout=False, log_stderr=False, run_dir=str(self.root))
+        
         subprocess_post_check_handle_pip_error(pip_process)
         if pip_process.returncode:
             raise PipxError(f"Error installing {full_package_description(package_name, package_or_url)}.")
@@ -290,21 +317,48 @@ class Venv:
         # Note: We want to install everything at once, as that lets
         # pip resolve conflicts correctly.
         logger.info("Installing %s", package_descr := ", ".join(requirements))
-        with animate(f"installing {package_descr}", self.do_animation):
-            # do not use -q with `pip install` so subprocess_post_check_pip_errors
-            #   has more information to analyze in case of failure.
+        
+        # Use progress tracking if not in verbose mode and animation is enabled
+        if self.do_animation:
+            import sys
+            sys.stderr.write(f"Installing {package_descr}...\n")
+            sys.stderr.flush()
+            
+            # Use first requirement as the primary package name for progress tracking
+            primary_pkg = requirements[0].split("[")[0].split("=")[0].split(">")[0].split("<")[0]
+            progress = InstallProgress(primary_pkg)
+            
             cmd = [
                 str(self.python_path),
                 "-m",
                 "pip",
                 "--no-input",
                 "install",
+                "--progress-bar", "on",  # Force progress bar to be shown
                 *pip_args,
                 *requirements,
             ]
-            # no logging because any errors will be specially logged by
-            #   subprocess_post_check_handle_pip_error()
-            pip_process = run_subprocess(cmd, log_stdout=False, log_stderr=False, run_dir=str(self.root))
+            
+            pip_process = run_subprocess_streaming(
+                cmd,
+                run_dir=str(self.root),
+                output_callback=progress.parse_line,
+            )
+            progress.finish()
+        else:
+            # Verbose mode - use traditional approach
+            with animate(f"installing {package_descr}", self.do_animation):
+                cmd = [
+                    str(self.python_path),
+                    "-m",
+                    "pip",
+                    "--no-input",
+                    "install",
+                    *pip_args,
+                    *requirements,
+                ]
+                pip_process = run_subprocess(cmd, log_stdout=False, log_stderr=False, run_dir=str(self.root))
+        
         subprocess_post_check_handle_pip_error(pip_process)
         if pip_process.returncode:
             raise PipxError(f"Error installing {', '.join(requirements)}.")

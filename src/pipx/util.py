@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import (
     Any,
+    Callable,
     Dict,
     List,
     NoReturn,
@@ -196,6 +197,115 @@ def run_subprocess(
     if capture_stderr and log_stderr:
         logger.debug(f"stderr: {completed_process.stderr}".rstrip())
     logger.debug(f"returncode: {completed_process.returncode}")
+
+    return completed_process
+
+
+def run_subprocess_streaming(
+    cmd: Sequence[Union[str, Path]],
+    log_cmd_str: Optional[str] = None,
+    run_dir: Optional[str] = None,
+    output_callback: Optional[Callable[[str], None]] = None,
+) -> "subprocess.CompletedProcess[str]":
+    """Run arbitrary command as subprocess, streaming output line by line.
+    
+    Args:
+        cmd: The command to run
+        log_cmd_str: Optional string to log instead of the full command
+        run_dir: Optional directory to run the command in
+        output_callback: Optional callback function called for each line of output
+        
+    Returns:
+        CompletedProcess with stdout and stderr captured
+    """
+    env = dict(os.environ)
+    env = _fix_subprocess_env(env)
+
+    if log_cmd_str is None:
+        log_cmd_str = " ".join(str(c) for c in cmd)
+    logger.info(f"running {log_cmd_str}")
+    if run_dir:
+        os.makedirs(run_dir, exist_ok=True)
+    # windows cannot take Path objects, only strings
+    cmd_str_list = [str(c) for c in cmd]
+
+    stdout_lines = []
+    stderr_lines = []
+
+    try:
+        process = subprocess.Popen(
+            cmd_str_list,
+            env=env,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Redirect stderr to stdout so we get all output together
+            encoding="utf-8",
+            text=True,
+            cwd=run_dir,
+        )
+
+        # Read output, splitting on both newlines and carriage returns
+        if process.stdout:
+            buffer = ""
+            while process.poll() is None or buffer:
+                # Read available data in small chunks
+                try:
+                    chunk = process.stdout.read(256)
+                    if chunk:
+                        stdout_lines.append(chunk)
+                        buffer += chunk
+                        
+                        # Split on both \r and \n to catch progress updates
+                        # Process lines as they come, handling carriage returns
+                        while '\n' in buffer or '\r' in buffer:
+                            # Find the earliest line separator
+                            newline_pos = buffer.find('\n')
+                            cr_pos = buffer.find('\r')
+                            
+                            if newline_pos == -1:
+                                split_pos = cr_pos
+                            elif cr_pos == -1:
+                                split_pos = newline_pos
+                            else:
+                                split_pos = min(newline_pos, cr_pos)
+                            
+                            line = buffer[:split_pos]
+                            buffer = buffer[split_pos + 1:]
+                            
+                            if output_callback and line:
+                                output_callback(line)
+                except:
+                    # If read fails, process might have ended
+                    break
+            
+            # Read any remaining output
+            remaining = process.stdout.read()
+            if remaining:
+                stdout_lines.append(remaining)
+                buffer += remaining
+                
+            # Process any remaining content in buffer
+            if buffer and output_callback:
+                output_callback(buffer)
+
+        returncode = process.wait()
+
+    except Exception as e:
+        logger.error(f"Error running subprocess: {e}")
+        raise
+
+    stdout = "".join(stdout_lines)
+    stderr = "".join(stderr_lines)
+
+    logger.debug(f"stdout: {stdout}".rstrip())
+    logger.debug(f"returncode: {returncode}")
+
+    # Create a CompletedProcess-like object
+    completed_process = subprocess.CompletedProcess(
+        args=cmd_str_list,
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
 
     return completed_process
 
