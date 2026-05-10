@@ -8,6 +8,7 @@ from typing import Any
 from pipx import paths
 from pipx.colors import bold
 from pipx.commands.common import VenvProblems, get_venv_summary, venv_health_check
+from pipx.commands.upgrade import _check_upgrade_available
 from pipx.constants import EXIT_CODE_LIST_PROBLEM, EXIT_CODE_OK, ExitCode
 from pipx.emojis import sleep
 from pipx.pipx_metadata_file import JsonEncoderHandlesPath, PipxMetadata
@@ -106,12 +107,67 @@ def list_pinned(venv_dirs: Collection[Path], include_injected: bool) -> VenvProb
     return all_venv_problems
 
 
+def list_outdated(
+    venv_dirs: Collection[Path],
+    pip_args: list[str],
+    verbose: bool,
+    include_injected: bool,
+    backend: str | None = None,
+    env_backend: str | None = None,
+) -> VenvProblems:
+
+    all_venv_problems = VenvProblems()
+    found_any = False
+
+    for venv_dir in venv_dirs:
+        venv_metadata, venv_problems, warning_str = get_venv_metadata_summary(venv_dir)
+        if venv_problems.any_():
+            logger.warning(warning_str)
+            all_venv_problems.or_(venv_problems)
+            continue
+
+        venv = Venv(venv_dir, verbose=verbose, backend=backend, env_backend=env_backend)
+        effective_pip_args = pip_args or venv.pipx_metadata.main_package.pip_args
+
+        package_name = venv.main_package_name
+        package_metadata = venv.package_metadata[package_name]
+        display_name = f"{package_metadata.package}{package_metadata.suffix}"
+
+        if not package_metadata.pinned:
+            new_version = _check_upgrade_available(venv, package_name, effective_pip_args)
+            if new_version is not None:
+                print(f"{display_name}: {package_metadata.package_version} < {new_version}")
+                found_any = True
+
+        if include_injected:
+            for inj_name, inj_metadata in venv.package_metadata.items():
+                if inj_name == venv.main_package_name:
+                    continue
+                inj_display = f"{inj_metadata.package}{inj_metadata.suffix}"
+                inj_pip_args = effective_pip_args or inj_metadata.pip_args
+                if not inj_metadata.pinned:
+                    new_version = _check_upgrade_available(venv, inj_name, inj_pip_args)
+                    if new_version is not None:
+                        print(f"{inj_display}: {inj_metadata.package_version} < {new_version} (injected in {venv.name})")
+                        found_any = True
+
+    if not found_any:
+        print(f"No packages have available upgrades {sleep}")
+
+    return all_venv_problems
+
+
 def list_packages(
     venv_container: VenvContainer,
     include_injected: bool,
     json_format: bool,
     short_format: bool,
     pinned_only: bool,
+    outdated: bool = False,
+    pip_args: list[str] | None = None,
+    verbose: bool = False,
+    backend: str | None = None,
+    env_backend: str | None = None,
 ) -> ExitCode:
     """Returns pipx exit code."""
     venv_dirs: Collection[Path] = sorted(venv_container.iter_venv_dirs())
@@ -124,6 +180,17 @@ def list_packages(
         all_venv_problems = list_short(venv_dirs)
     elif pinned_only:
         all_venv_problems = list_pinned(venv_dirs, include_injected)
+    elif outdated:
+        if not venv_dirs:
+            return EXIT_CODE_OK
+        all_venv_problems = list_outdated(
+            venv_dirs,
+            pip_args=pip_args or [],
+            verbose=verbose,
+            include_injected=include_injected,
+            backend=backend,
+            env_backend=env_backend,
+        )
     else:
         if not venv_dirs:
             return EXIT_CODE_OK

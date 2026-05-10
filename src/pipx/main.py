@@ -689,6 +689,11 @@ def _add_upgrade(subparsers, venv_completer: VenvCompleter, shared_parser: argpa
         action="store_true",
         help="Install package spec if missing",
     )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check for available upgrades without installing anything",
+    )
     add_python_options(p)
     add_backend_arg(p)
     p.set_defaults(func=_cmd_upgrade)
@@ -704,6 +709,7 @@ def _cmd_upgrade(args: argparse.Namespace, ctx: DispatchContext) -> ExitCode:
         include_injected=args.include_injected,
         force=args.force,
         install=args.install,
+        dry_run=args.dry_run,
         python_flag_passed=ctx.python_flag_passed,
         backend=ctx.backend,
         env_backend=ctx.env_backend,
@@ -729,6 +735,11 @@ def _add_upgrade_all(subparsers: argparse._SubParsersAction, shared_parser: argp
         action="store_true",
         help="Modify existing virtual environment and files in PIPX_BIN_DIR and PIPX_MAN_DIR",
     )
+    p.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Check for available upgrades without installing anything",
+    )
     add_pip_venv_args(p)
     add_backend_arg(p)
     p.set_defaults(func=_cmd_upgrade_all)
@@ -741,6 +752,7 @@ def _cmd_upgrade_all(args: argparse.Namespace, ctx: DispatchContext) -> ExitCode
         include_injected=args.include_injected,
         skip=ctx.skip_list,
         force=args.force,
+        dry_run=args.dry_run,
         pip_args=ctx.pip_args,
         python_flag_passed=ctx.python_flag_passed,
         backend=ctx.backend,
@@ -889,11 +901,27 @@ def _add_list(subparsers: argparse._SubParsersAction, shared_parser: argparse.Ar
         help="List pinned packages only. Pass --include-injected at the same time to list injected packages that were pinned.",
     )
     g.add_argument("--skip-maintenance", action="store_true", help="(deprecated) No-op")
+    g.add_argument(
+        "--outdated",
+        action="store_true",
+        help="List packages with available upgrades.",
+    )
     p.set_defaults(func=_cmd_list)
 
 
 def _cmd_list(args: argparse.Namespace, ctx: DispatchContext) -> ExitCode:
-    return commands.list_packages(ctx.venv_container, args.include_injected, args.json, args.short, args.pinned)
+    return commands.list_packages(
+        ctx.venv_container,
+        args.include_injected,
+        args.json,
+        args.short,
+        args.pinned,
+        outdated=args.outdated,
+        pip_args=ctx.pip_args,
+        verbose=args.verbose,
+        backend=ctx.backend,
+        env_backend=ctx.env_backend,
+    )
 
 
 def _add_interpreter(
@@ -1328,6 +1356,8 @@ def setup(args: argparse.Namespace) -> None:
     verbose = getattr(args, "verbose", 0) - getattr(args, "quiet", 0)
 
     setup_logging(verbose)
+
+    paths.ctx.log_warnings()
 
     logger.debug(f"{time.strftime('%Y-%m-%d %H:%M:%S')}")
     logger.debug(f"{' '.join(sys.argv)}")

@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -16,6 +17,51 @@ from pipx.util import PipxError, pipx_wrap
 from pipx.venv import Venv, VenvContainer
 
 _LOGGER: Final[logging.Logger] = logging.getLogger(__name__)
+
+
+def _check_upgrade_available(
+    venv: Venv,
+    package_name: str,
+    pip_args: list[str],
+) -> str | None:
+    """Return new version string if an upgrade is available, else None.
+
+    Runs pip/uv install --upgrade --dry-run and parses the 'Would install'
+    output to extract the new version for package_name.
+    """
+    package_metadata = venv.package_metadata[package_name]
+
+    if package_metadata.package_or_url is None:
+        raise PipxError(f"Internal Error: package {package_name} has corrupt pipx metadata.")
+
+    if package_metadata.pinned:
+        return None
+
+    package_or_url = parse_specifier_for_upgrade(package_metadata.package_or_url)
+
+    process = venv.backend.install(
+        venv_root=venv.root,
+        venv_python=venv.python_path,
+        requirements=[package_or_url],
+        pip_args=pip_args,
+        upgrade=True,
+        dry_run=True,
+        log_pip_errors=False,
+        verbose=venv.verbose,
+    )
+
+    combined = (process.stdout or "") + (process.stderr or "")
+    match = re.search(r"(?i)would install (.+)", combined)
+    if not match:
+        return None
+
+    canonical = re.sub(r"[-_.]+", "-", package_name).lower()
+    for token in match.group(1).split():
+        # tokens are "pkgname-version"; split on last hyphen before a digit
+        m = re.match(r"^(.+)-([0-9][^-]*)$", token)
+        if m and re.sub(r"[-_.]+", "-", m.group(1)).lower() == canonical:
+            return m.group(2)
+    return None
 
 
 def _upgrade_package(
@@ -104,6 +150,89 @@ def _upgrade_package(
             )
         )
         return 1
+
+
+def _dry_run_venv(
+    venv_dir: Path,
+    pip_args: list[str],
+    verbose: bool,
+    *,
+    include_injected: bool,
+    backend: str | None = None,
+    env_backend: str | None = None,
+) -> list[str]:
+    """Return list of package names that have available upgrades (dry run, no changes made)."""
+    if not venv_dir.is_dir():
+        raise PipxError(
+            f"""
+            Package is not installed. Expected to find {venv_dir!s}, but it
+            does not exist.
+            """
+        )
+
+    venv = Venv(venv_dir, verbose=verbose, backend=backend, env_backend=env_backend)
+
+    if not venv.python_path.is_file():
+        raise PipxError(
+            f"Cannot check {red(bold(venv_dir.name))}: invalid python interpreter {venv.python_path}.\n"
+            f"This usually happens after a system Python upgrade.\n"
+            f"To fix, execute: pipx reinstall-all",
+            wrap_message=False,
+        )
+
+    if not venv.package_metadata:
+        raise PipxError(
+            f"Cannot check {red(bold(venv_dir.name))}: missing internal pipx metadata.\n"
+            f"It was likely installed using a pipx version before 0.15.0.0.\n"
+            f"Please uninstall and install this package to fix.",
+            wrap_message=False,
+        )
+
+    if not pip_args:
+        pip_args = venv.pipx_metadata.main_package.pip_args
+
+    upgradable: list[str] = []
+
+    package_name = venv.main_package_name
+    package_metadata = venv.package_metadata[package_name]
+    display_name = f"{package_metadata.package}{package_metadata.suffix}"
+
+    if package_metadata.pinned:
+        _LOGGER.warning(
+            f"Not checking pinned package {venv.name}. Run `pipx unpin {venv.name}` to unpin it."
+        )
+    else:
+        new_version = _check_upgrade_available(venv, package_name, pip_args)
+        if new_version is not None:
+            print(f"{display_name}: {package_metadata.package_version} < {new_version}")
+            upgradable.append(display_name)
+        else:
+            print(f"{display_name} is already at latest version {package_metadata.package_version} (location: {venv.root!s})")
+
+    if include_injected:
+        for inj_name in venv.package_metadata:
+            if inj_name == venv.main_package_name:
+                continue
+            inj_metadata = venv.package_metadata[inj_name]
+            inj_display = f"{inj_metadata.package}{inj_metadata.suffix}"
+            inj_pip_args = pip_args or inj_metadata.pip_args
+            if inj_metadata.pinned:
+                _LOGGER.warning(
+                    f"Not checking pinned package {inj_name} in venv {venv.name}. "
+                    f"Run `pipx unpin {venv.name}` to unpin it."
+                )
+            else:
+                new_version = _check_upgrade_available(venv, inj_name, inj_pip_args)
+                if new_version is not None:
+                    print(f"{inj_display}: {inj_metadata.package_version} < {new_version} (injected in {venv.name})")
+                    upgradable.append(inj_display)
+                else:
+                    print(
+                        f"{inj_display} is already at latest version {inj_metadata.package_version} "
+                        f"(injected in {venv.name})"
+                    )
+
+    return upgradable
 
 
 def _upgrade_venv(
@@ -230,11 +359,24 @@ def upgrade(
     include_injected: bool,
     force: bool,
     install: bool,
+    dry_run: bool = False,
     python_flag_passed: bool = False,
     backend: str | None = None,
     env_backend: str | None = None,
 ) -> ExitCode:
     """Return pipx exit code."""
+
+    if dry_run:
+        for venv_dir in venv_dirs.values():
+            _dry_run_venv(
+                venv_dir,
+                pip_args,
+                verbose,
+                include_injected=include_injected,
+                backend=backend,
+                env_backend=env_backend,
+            )
+        return EXIT_CODE_OK
 
     for venv_dir in venv_dirs.values():
         _ = _upgrade_venv(
@@ -264,12 +406,42 @@ def upgrade_all(
     include_injected: bool,
     skip: Sequence[str],
     force: bool,
+    dry_run: bool = False,
     python_flag_passed: bool = False,
     backend: str | None = None,
     env_backend: str | None = None,
 ) -> ExitCode:
     """Return pipx exit code."""
-    failed: list[str] = []
+
+    if dry_run:
+        failed: list[str] = []
+        upgradable: list[str] = []
+        for venv_dir in venv_container.iter_venv_dirs():
+            if venv_dir.name in skip:
+                continue
+            venv = Venv(venv_dir, verbose=verbose, backend=backend, env_backend=env_backend)
+            if "--editable" in venv.pipx_metadata.main_package.pip_args:
+                continue
+            try:
+                found = _dry_run_venv(
+                    venv_dir,
+                    pip_args,
+                    verbose=verbose,
+                    include_injected=include_injected,
+                    backend=backend,
+                    env_backend=env_backend,
+                )
+                upgradable.extend(found)
+            except PipxError as e:
+                print(e, file=sys.stderr)
+                failed.append(venv_dir.name)
+        if not upgradable:
+            print(f"No packages have available upgrades {sleep}")
+        if failed:
+            raise PipxError(f"The following package(s) could not be checked: {','.join(failed)}")
+        return EXIT_CODE_OK
+
+    failed_upgrade: list[str] = []
     upgraded: list[str] = []
 
     for venv_dir in venv_container.iter_venv_dirs():
@@ -299,11 +471,11 @@ def upgrade_all(
                 upgraded.append(venv_dir.name)
         except PipxError as e:
             print(e, file=sys.stderr)
-            failed.append(venv_dir.name)
+            failed_upgrade.append(venv_dir.name)
     if len(upgraded) == 0:
         print(f"No packages upgraded after running 'pipx upgrade-all' {sleep}")
-    if len(failed) > 0:
-        raise PipxError(f"The following package(s) failed to upgrade: {','.join(failed)}")
+    if len(failed_upgrade) > 0:
+        raise PipxError(f"The following package(s) failed to upgrade: {','.join(failed_upgrade)}")
     # Any failure to install will raise PipxError, otherwise success
     return EXIT_CODE_OK
 

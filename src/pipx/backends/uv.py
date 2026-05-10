@@ -95,12 +95,15 @@ class UvBackend(Backend):
         pip_args: list[str],
         no_deps: bool = False,
         upgrade: bool = False,
+        dry_run: bool = False,
         log_pip_errors: bool = True,
         verbose: bool = False,
     ) -> CompletedProcess[str]:
         cmd = self._uv_pip_command("install", venv_python, verbose=verbose)
         if upgrade:
             cmd.append("--upgrade")
+        if dry_run:
+            cmd.append("--dry-run")
         if no_deps:
             cmd.append("--no-deps")
         cmd += [*_strip_pip_quiet_flags(pip_args), *requirements]

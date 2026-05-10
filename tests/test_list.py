@@ -245,6 +245,37 @@ def test_list_pinned_packages_include_injected(pipx_temp_env, monkeypatch, capsy
     assert "black 22.8.0 (injected in venv pylint)" in captured.out
 
 
+def test_list_outdated_no_upgrades(pipx_temp_env, monkeypatch, capsys):
+    assert not run_pipx_cli(["install", "pycowsay"])
+    capsys.readouterr()
+
+    assert not run_pipx_cli(["list", "--outdated"])
+    captured = capsys.readouterr()
+    assert "No packages have available upgrades" in captured.out
+
+
+def test_list_outdated_shows_upgrade(pipx_temp_env, monkeypatch, capsys):
+    pylint_initial = PKG["pylint"]["spec"].split("==")[-1]
+    assert not run_pipx_cli(["install", PKG["pylint"]["spec"]])
+    capsys.readouterr()
+
+    assert not run_pipx_cli(["list", "--outdated"])
+    captured = capsys.readouterr()
+    assert f"pylint: {pylint_initial} <" in captured.out
+
+
+def test_list_outdated_include_injected(pipx_temp_env, monkeypatch, capsys):
+    black_initial = PKG["black"]["spec"].split("==")[-1]
+    assert not run_pipx_cli(["install", PKG["pylint"]["spec"]])
+    assert not run_pipx_cli(["inject", "pylint", PKG["black"]["spec"]])
+    capsys.readouterr()
+
+    assert not run_pipx_cli(["list", "--outdated", "--include-injected"])
+    captured = capsys.readouterr()
+    assert f"black: {black_initial} <" in captured.out
+    assert "(injected in pylint)" in captured.out
+
+
 def test_list_installed_packages_error(monkeypatch, tmp_path, fake_process):
     fake_venv = venv.Venv(tmp_path / "fake_venv")
     pip_list_args = [str(fake_venv.python_path), "-m", "pip", "list", "--format=json"]

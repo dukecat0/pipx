@@ -78,12 +78,15 @@ class PipBackend(Backend):
         pip_args: list[str],
         no_deps: bool = False,
         upgrade: bool = False,
+        dry_run: bool = False,
         log_pip_errors: bool = True,
         verbose: bool = False,
     ) -> CompletedProcess[str]:
         cmd: list[str] = [str(venv_python), "-m", "pip", "--no-input", "install"]
         if upgrade:
             cmd.append("--upgrade")
+        if dry_run:
+            cmd.append("--dry-run")
         if no_deps:
             cmd.append("--no-dependencies")
         cmd += [*pip_args, *requirements]

@@ -192,6 +192,46 @@ def test_upgrade_pip_args(
         assert arg not in metadata.main_package.pip_args
 
 
+def test_upgrade_dry_run_no_upgrade(pipx_temp_env, capsys):
+    assert not run_pipx_cli(["install", "pycowsay"])
+    capsys.readouterr()
+
+    assert not run_pipx_cli(["upgrade", "pycowsay", "--dry-run"])
+    captured = capsys.readouterr()
+    assert "pycowsay is already at latest version" in captured.out
+
+
+def test_upgrade_dry_run_reports_upgrade(pipx_temp_env, capsys):
+    pkg_spec = PKG["pylint"]["spec"]
+    initial_version = pkg_spec.split("==")[-1]
+    assert not run_pipx_cli(["install", pkg_spec])
+    capsys.readouterr()
+
+    assert not run_pipx_cli(["upgrade", "pylint", "--dry-run"])
+    captured = capsys.readouterr()
+    assert f"pylint: {initial_version} <" in captured.out
+    assert "upgraded package" not in captured.out
+
+    # pylint version on disk must be unchanged after a dry run
+    metadata = PipxMetadata(paths.ctx.home / "venvs" / "pylint")
+    assert metadata.main_package.package_version == initial_version
+
+
+def test_upgrade_dry_run_include_injected(pipx_temp_env, capsys):
+    pylint_initial = PKG["pylint"]["spec"].split("==")[-1]
+    black_initial = PKG["black"]["spec"].split("==")[-1]
+    assert not run_pipx_cli(["install", PKG["pylint"]["spec"]])
+    assert not run_pipx_cli(["inject", "pylint", PKG["black"]["spec"]])
+    capsys.readouterr()
+
+    assert not run_pipx_cli(["upgrade", "--include-injected", "pylint", "--dry-run"])
+    captured = capsys.readouterr()
+    assert f"pylint: {pylint_initial} <" in captured.out
+    assert f"black: {black_initial} <" in captured.out
+    assert "(injected in pylint)" in captured.out
+    assert "upgraded package" not in captured.out
+
+
 def test_upgrade_injected_preserves_stored_pip_args(pipx_temp_env: None, capsys: pytest.CaptureFixture[str]) -> None:
     assert not run_pipx_cli(["install", PKG["pylint"]["spec"]])
     assert not run_pipx_cli(["inject", "pylint", PKG["black"]["spec"], "--pip-args=--no-cache-dir"])

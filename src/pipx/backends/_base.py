@@ -38,6 +38,7 @@ class Backend(ABC):
         pip_args: list[str],
         no_deps: bool = False,
         upgrade: bool = False,
+        dry_run: bool = False,
         log_pip_errors: bool = True,
         verbose: bool = False,
     ) -> CompletedProcess[str]: ...
