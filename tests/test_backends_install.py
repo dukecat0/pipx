@@ -99,11 +99,19 @@ def test_pip_backend_install_omits_dry_run_by_default(fake_process, tmp_path: Pa
 def test_uv_backend_install_passes_dry_run(fake_process, tmp_path: Path) -> None:
     venv_root = tmp_path / "venv"
     venv_python = tmp_path / "venv" / "bin" / "python"
-    backend = UvBackend()
+    uv_path = shutil.which("uv")
+    assert uv_path is not None
+    fake_process.register([uv_path, "--version"], stdout="uv 0.4.0\n", occurrences=2)
     fake_process.keep_last_process(True)
+    backend = UvBackend()
     fake_process.register(
         [str(backend._binary), "pip", "install", "--python", str(venv_python), fake_process.any()],
-        stdout="Would install pycowsay==1.2.3\n",
+        stdout=(
+            "Resolved 1 package in 2.05s\n"
+            "Would download 1 package\n"
+            "Would install 1 package\n"
+            " + pycowsay==1.2.3\n"
+        ),
     )
 
     backend.install(
